@@ -24,7 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let socket;
     
     function initializeWebSocket() {
-        socket = new WebSocket(`ws://${window.location.host}/ws/player`);
+        // Simple protocol detection
+        const protocol = window.location.protocol === 'http:' ? 'ws' : 'wss';
+        socket = new WebSocket(`${protocol}://${window.location.host}/ws/player`);
         
         socket.onopen = () => {
             console.log('Connected to server as player');

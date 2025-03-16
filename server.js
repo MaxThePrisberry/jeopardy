@@ -2,27 +2,35 @@
 console.log("Starting Jeopardy Game Server...");
 
 const express = require('express');
-const app = express();
+const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const { WebSocketServer } = require('ws');
 const cookieParser = require('cookie-parser');
 const { v4: uuidv4 } = require('uuid');
 
-// You can add database integration similar to your existing code
-// const db = require('./database.js');
+// Express app setup
+const app = express();
+const port = process.env.PORT || 4000;
 
-const port = 4000;
+// Create HTTP server
+const httpServer = http.createServer(app);
 
-// WebSocket server setup
-const wss = new WebSocketServer({ noServer: true });
-
-// Game state
-const gameState = {
-  currentQuestion: null,
-  playerAnswers: {},  // Maps questionId -> { playerId: answer }
-  players: {},        // Maps playerId -> { connection, score, name }
-  hostConnection: null,
-  verifierConnection: null
-};
+// Create HTTPS server if certificates exist
+let httpsServer;
+try {
+  // Check if SSL certificates exist
+  if (fs.existsSync('./certificates/key.pem') && fs.existsSync('./certificates/cert.pem')) {
+    const sslOptions = {
+      key: fs.readFileSync('./certificates/key.pem'),
+      cert: fs.readFileSync('./certificates/cert.pem')
+    };
+    httpsServer = https.createServer(sslOptions, app);
+    console.log("HTTPS server created");
+  }
+} catch (error) {
+  console.log("SSL certificates not found, running only HTTP server");
+}
 
 // Middleware
 app.use(cookieParser());
@@ -47,54 +55,91 @@ app.use((req, res) => {
   res.sendFile('index.html', { root: 'public' });
 });
 
-// Start the server
-const server = app.listen(port, () => {
-  console.log(`Jeopardy Game Server is running at http://localhost:${port}`);
+// Start the HTTP server
+httpServer.listen(port, () => {
+  console.log(`Jeopardy Game Server is running on HTTP at http://localhost:${port}`);
 });
 
-// WebSocket connection handling
-server.on('upgrade', (request, socket, head) => {
-  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
-  
-  if (['/ws/host', '/ws/verify', '/ws/player'].includes(pathname)) {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request, pathname);
-    });
-  } else {
-    socket.destroy();
-  }
-});
+// Start the HTTPS server if available
+if (httpsServer) {
+  const httpsPort = process.env.HTTPS_PORT || 4443;
+  httpsServer.listen(httpsPort, () => {
+    console.log(`Jeopardy Game Server is running on HTTPS at https://localhost:${httpsPort}`);
+  });
+}
 
-// WebSocket message handlers
-wss.on('connection', (ws, request, pathname) => {
-  console.log(`New WebSocket connection on ${pathname}`);
-  
-  // Generate a unique ID for this connection
-  const connectionId = uuidv4();
-  
-  switch (pathname) {
-    case '/ws/host':
+// WebSocket setup for HTTP
+const wssHttp = new WebSocketServer({ server: httpServer });
+setupWebSocketServer(wssHttp);
+
+// WebSocket setup for HTTPS if available
+let wssHttps;
+if (httpsServer) {
+  wssHttps = new WebSocketServer({ server: httpsServer });
+  setupWebSocketServer(wssHttps);
+}
+
+// Game state
+const gameState = {
+  currentQuestion: null,
+  playerAnswers: {},  // Maps questionId -> { playerId: answer }
+  players: {},        // Maps playerId -> { connection, score, name }
+  hostConnection: null,
+  verifierConnection: null
+};
+
+// Set up WebSocket server with connection handlers
+function setupWebSocketServer(wss) {
+  wss.on('connection', (ws, req) => {
+    console.log('New WebSocket connection');
+    
+    // Parse the URL to determine the connection type
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const pathname = url.pathname;
+    
+    // Generate a unique ID for this connection
+    const connectionId = uuidv4();
+    
+    if (pathname === '/ws/host') {
       handleHostConnection(ws, connectionId);
-      break;
-    case '/ws/verify':
+    } else if (pathname === '/ws/verify') {
       handleVerifierConnection(ws, connectionId);
-      break;
-    case '/ws/player':
+    } else if (pathname === '/ws/player') {
       handlePlayerConnection(ws, connectionId);
-      break;
-  }
-  
-  // Set up ping/pong to keep connection alive
-  ws.isAlive = true;
-  ws.on('pong', () => {
+    } else {
+      console.log(`Unknown WebSocket endpoint: ${pathname}`);
+      ws.close();
+      return;
+    }
+    
+    // Set up ping/pong to keep connection alive
     ws.isAlive = true;
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
+    
+    // Handle connection close
+    ws.on('close', () => {
+      handleConnectionClose(pathname, connectionId);
+    });
   });
-  
-  // Handle connection close
-  ws.on('close', () => {
-    handleConnectionClose(pathname, connectionId);
+
+  // Keep-alive mechanism with ping/pong
+  const pingInterval = setInterval(() => {
+    wss.clients.forEach(ws => {
+      if (ws.isAlive === false) {
+        return ws.terminate();
+      }
+      
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, 30000);
+
+  wss.on('close', () => {
+    clearInterval(pingInterval);
   });
-});
+}
 
 // Host connection handler
 function handleHostConnection(ws, connectionId) {
@@ -451,19 +496,3 @@ function broadcastScores() {
   
   broadcastMessage(message);
 }
-
-// Keep-alive mechanism with ping/pong
-const pingInterval = setInterval(() => {
-  wss.clients.forEach(ws => {
-    if (ws.isAlive === false) {
-      return ws.terminate();
-    }
-    
-    ws.isAlive = false;
-    ws.ping();
-  });
-}, 30000);
-
-wss.on('close', () => {
-  clearInterval(pingInterval);
-});

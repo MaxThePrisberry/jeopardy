@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Sample categories and questions
-    const gameData = {
+    // Sample categories and questions (default data)
+    let gameData = {
         categories: [
             'Science', 'History', 'Geography', 'Literature', 'Sports', 'Entertainment'
         ],
@@ -64,12 +64,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const playersEl = document.getElementById('players');
     const resetGameBtn = document.getElementById('reset-game');
 
+    // Import elements - will be added to the HTML
+    const importContainerEl = document.createElement('div');
+    importContainerEl.className = 'import-container';
+    importContainerEl.innerHTML = `
+        <h2>Import Questions</h2>
+        <div class="import-controls">
+            <input type="file" id="import-file" accept=".json" />
+            <button id="import-button">Import Questions</button>
+        </div>
+        <div id="import-status"></div>
+    `;
+    
+    // Insert import container after game-board
+    const gameBoardEl = document.querySelector('.game-board');
+    gameBoardEl.parentNode.insertBefore(importContainerEl, gameBoardEl.nextSibling);
+    
+    const importFileEl = document.getElementById('import-file');
+    const importButtonEl = document.getElementById('import-button');
+    const importStatusEl = document.getElementById('import-status');
+
     // WebSocket connection
     let socket;
     let selectedQuestion = null;
+    let selectedQuestionCells = new Set(); // Keep track of selected question cells
     
     function initializeWebSocket() {
-        socket = new WebSocket(`ws://${window.location.host}/ws/host`);
+        // Simple protocol detection
+        const protocol = window.location.protocol === 'http:' ? 'ws' : 'wss';
+        socket = new WebSocket(`${protocol}://${window.location.host}/ws/host`);
         
         socket.onopen = () => {
             console.log('Connected to server as host');
@@ -127,8 +150,15 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Add questions
         questionsGridEl.innerHTML = '';
-        for (let pointIndex = 0; pointIndex < 5; pointIndex++) {
-            for (let catIndex = 0; catIndex < 6; catIndex++) {
+        selectedQuestionCells.clear(); // Clear the selected questions set
+        
+        for (let pointIndex = 0; pointIndex < gameData.questions[0].length; pointIndex++) {
+            for (let catIndex = 0; catIndex < gameData.categories.length; catIndex++) {
+                if (!gameData.questions[catIndex] || !gameData.questions[catIndex][pointIndex]) {
+                    console.error(`Missing question data at category ${catIndex}, point index ${pointIndex}`);
+                    continue;
+                }
+                
                 const question = gameData.questions[catIndex][pointIndex];
                 const questionCell = document.createElement('div');
                 questionCell.className = 'question-cell';
@@ -139,8 +169,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 questionCell.dataset.category = gameData.categories[catIndex];
                 
                 questionCell.addEventListener('click', () => {
-                    selectQuestion(question);
-                    questionCell.classList.add('selected');
+                    // Only allow selection if the cell hasn't been selected before
+                    if (!selectedQuestionCells.has(question.id)) {
+                        selectQuestion(question);
+                        questionCell.classList.add('selected');
+                        selectedQuestionCells.add(question.id); // Mark as selected
+                    }
                 });
                 
                 questionsGridEl.appendChild(questionCell);
@@ -192,6 +226,9 @@ document.addEventListener('DOMContentLoaded', () => {
         currentQuestionEl.textContent = 'No question selected';
         questionPointsEl.textContent = '';
         
+        // Clear selected questions set
+        selectedQuestionCells.clear();
+        
         // Reset all question cells
         const questionCells = document.querySelectorAll('.question-cell');
         questionCells.forEach(cell => {
@@ -199,11 +236,93 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    function importQuestions(file) {
+        const reader = new FileReader();
+        
+        reader.onload = function(event) {
+            try {
+                const importedData = JSON.parse(event.target.result);
+                
+                // Validate imported data
+                if (!importedData.categories || !Array.isArray(importedData.categories) || 
+                    !importedData.questions || !Array.isArray(importedData.questions)) {
+                    throw new Error('Invalid format: Missing categories or questions array');
+                }
+                
+                // Basic validation on categories
+                if (importedData.categories.length === 0) {
+                    throw new Error('Invalid format: No categories found');
+                }
+                
+                // Basic validation on questions
+                if (importedData.questions.length === 0) {
+                    throw new Error('Invalid format: No questions found');
+                }
+                
+                // Check that each category has a matching question array
+                if (importedData.categories.length !== importedData.questions.length) {
+                    throw new Error('Invalid format: Number of categories does not match number of question arrays');
+                }
+                
+                // Validate each question has required fields
+                for (let catIndex = 0; catIndex < importedData.questions.length; catIndex++) {
+                    const categoryQuestions = importedData.questions[catIndex];
+                    
+                    if (!Array.isArray(categoryQuestions)) {
+                        throw new Error(`Invalid format: Questions for category ${catIndex} is not an array`);
+                    }
+                    
+                    for (let qIndex = 0; qIndex < categoryQuestions.length; qIndex++) {
+                        const q = categoryQuestions[qIndex];
+                        if (!q.id || !q.text || !q.points) {
+                            throw new Error(`Invalid question at category ${catIndex}, index ${qIndex}: missing id, text, or points`);
+                        }
+                    }
+                }
+                
+                // If validation passes, update game data
+                gameData = importedData;
+                
+                // Update the game board
+                initializeGameBoard();
+                
+                // Update status
+                importStatusEl.textContent = 'Questions imported successfully!';
+                importStatusEl.className = 'success';
+                
+                // Clear file input
+                importFileEl.value = '';
+                
+            } catch (error) {
+                console.error('Error importing questions:', error);
+                importStatusEl.textContent = `Error: ${error.message}`;
+                importStatusEl.className = 'error';
+            }
+        };
+        
+        reader.onerror = function() {
+            importStatusEl.textContent = 'Error reading file';
+            importStatusEl.className = 'error';
+        };
+        
+        reader.readAsText(file);
+    }
+    
     // Event listeners
     resetGameBtn.addEventListener('click', () => {
         socket.send(JSON.stringify({
             type: 'reset'
         }));
+    });
+    
+    importButtonEl.addEventListener('click', () => {
+        if (importFileEl.files.length === 0) {
+            importStatusEl.textContent = 'Please select a file to import';
+            importStatusEl.className = 'error';
+            return;
+        }
+        
+        importQuestions(importFileEl.files[0]);
     });
     
     // Initialize

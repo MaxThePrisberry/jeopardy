@@ -297,3 +297,187 @@ h2 {
     background-color: #ffe6e6;
     border-left: 5px solid #cc0000;
 }
+
+/* Additional CSS for the enhanced verifier view - add this to styles.css */
+
+/* Question Sections */
+.question-section {
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.question-section.current-question {
+    border-left: 5px solid #0066cc;
+}
+
+.question-header {
+    background-color: #e6f2ff;
+    padding: 15px;
+    position: relative;
+}
+
+.question-header h3 {
+    margin: 0;
+    padding-right: 100px;
+    color: #003366;
+}
+
+.question-status {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.question-status.pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.question-status.complete {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.question-timestamp {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+
+/* Answers List */
+.answers-list {
+    padding: 15px;
+}
+
+.no-answers {
+    color: #6c757d;
+    font-style: italic;
+    text-align: center;
+    padding: 10px;
+}
+
+.verified-answer {
+    background-color: #f9f9f9;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.verified-answer .status {
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-weight: bold;
+}
+
+.verified-answer .status.correct {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.verified-answer .status.incorrect {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* Player Answers */
+.player-answer {
+    background-color: #fff;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    border-left: 3px solid #0066cc;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Override the existing player-answer class to avoid conflicts */
+.verifier-container .player-answer {
+    background-color: #fff;
+    display: flex;
+    border-left: 3px solid #0066cc;
+}
+
+/* Additional CSS for the host import feature - add this to styles.css */
+
+.import-container {
+    background-color: #f9f9f9;
+    padding: 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.import-container h2 {
+    margin-top: 0;
+    color: #003366;
+    border-bottom: 2px solid #003366;
+    padding-bottom: 10px;
+}
+
+.import-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+#import-file {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+#import-button {
+    padding: 10px 20px;
+    background-color: #0066cc;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#import-button:hover {
+    background-color: #004c99;
+}
+
+#import-status {
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+#import-status.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+#import-status.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* Disabled question cell */
+.question-cell.selected {
+    background-color: #808080;
+    cursor: not-allowed;
+}
+
+.question-cell.selected:hover {
+    background-color: #808080;
+}

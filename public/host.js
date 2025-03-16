@@ -197,11 +197,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function updatePlayerList(players) {
+        // Sort players by score (descending)
+        const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+        
         playersEl.innerHTML = '';
         
-        players.forEach(player => {
+        sortedPlayers.forEach((player, index) => {
             const playerEl = document.createElement('li');
-            playerEl.textContent = `${player.name}: ${player.score} points`;
+            
+            // Show connection status
+            let statusText = "";
+            if (player.connected === false) {
+                statusText = " (disconnected)";
+                playerEl.style.opacity = "0.7";
+            }
+            
+            playerEl.textContent = `${index + 1}. ${player.name}${statusText}: ${player.score} points`;
             playersEl.appendChild(playerEl);
         });
     }

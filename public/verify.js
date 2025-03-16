@@ -278,7 +278,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateScores(scores) {
         scoresListEl.innerHTML = '';
         
-        scores.forEach(player => {
+        // No need to sort here as scores are already sorted by the server
+        scores.forEach((player, index) => {
             const scoreEl = document.createElement('div');
             scoreEl.className = 'score-item';
             
@@ -289,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 scoreEl.style.opacity = "0.7";
             }
             
-            scoreEl.textContent = `${player.name}${statusText}: ${player.score} points`;
+            scoreEl.textContent = `${index + 1}. ${player.name}${statusText}: ${player.score} points`;
             scoresListEl.appendChild(scoreEl);
         });
     }

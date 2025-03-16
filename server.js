@@ -317,13 +317,26 @@ function handlePlayerConnection(ws, connectionId, req) {
     }
   });
   
+  // Get list of questions this player has already answered
+  const answeredQuestions = [];
+  if (gameState.currentQuestion) {
+    // Check if player already answered the current question
+    const currentQuestionId = gameState.currentQuestion.id;
+    if (gameState.playerAnswers[currentQuestionId] && 
+        gameState.playerAnswers[currentQuestionId].answers && 
+        gameState.playerAnswers[currentQuestionId].answers[connectionId]) {
+      answeredQuestions.push(currentQuestionId);
+    }
+  }
+  
   // Send current game state to player
   const initialState = {
     type: 'gameState',
     question: gameState.currentQuestion,
     score: gameState.players[connectionId].score,
     id: connectionId,
-    name: gameState.players[connectionId].name
+    name: gameState.players[connectionId].name,
+    answeredQuestions: answeredQuestions
   };
   
   ws.send(JSON.stringify(initialState));
@@ -432,6 +445,20 @@ function handlePlayerAnswer(playerId, message) {
   
   const questionId = gameState.currentQuestion.id;
   
+  // Check if player has already answered this question
+  if (gameState.playerAnswers[questionId] && 
+      gameState.playerAnswers[questionId].answers && 
+      gameState.playerAnswers[questionId].answers[playerId]) {
+    // Player already answered this question
+    if (gameState.players[playerId] && gameState.players[playerId].connection) {
+      gameState.players[playerId].connection.send(JSON.stringify({
+        type: 'error',
+        message: 'You have already submitted an answer for this question'
+      }));
+    }
+    return;
+  }
+  
   // Store the player's answer
   if (!gameState.playerAnswers[questionId]) {
     gameState.playerAnswers[questionId] = {
@@ -533,6 +560,12 @@ function saveGameResults() {
   const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\./g, '-');
   const filename = path.join(resultsDir, `game_results_${timestamp}.json`);
   
+  // Create a simplified array of player scores for quick reference
+  const playerScores = Object.entries(gameState.players).map(([id, player]) => ({
+    name: player.name,
+    score: player.score
+  })).sort((a, b) => b.score - a.score);
+  
   // Prepare the game data to save
   const gameResults = {
     timestamp: new Date().toISOString(),
@@ -552,7 +585,9 @@ function saveGameResults() {
         correct: answerData.correct || false,
         verified: answerData.verified || false
       }))
-    }))
+    })),
+    // Simple player scores array
+    playerScores: playerScores
   };
   
   // Write the file
@@ -617,12 +652,14 @@ function broadcastMessage(message) {
 }
 
 function broadcastPlayerList() {
-  const playerList = Object.entries(gameState.players).map(([id, player]) => ({
-    id,
-    name: player.name,
-    score: player.score,
-    connected: player.connected || false
-  }));
+  const playerList = Object.entries(gameState.players)
+    .map(([id, player]) => ({
+      id,
+      name: player.name,
+      score: player.score,
+      connected: player.connected || false
+    }))
+    .sort((a, b) => b.score - a.score); // Sort by score descending
   
   const message = {
     type: 'playerList',
@@ -633,16 +670,18 @@ function broadcastPlayerList() {
 }
 
 function broadcastScores() {
-  const scores = Object.entries(gameState.players).map(([id, player]) => ({
-    id,
-    name: player.name,
-    score: player.score,
-    connected: player.connected || false
-  }));
+  const scores = Object.entries(gameState.players)
+    .map(([id, player]) => ({
+      id,
+      name: player.name,
+      score: player.score,
+      connected: player.connected || false
+    }))
+    .sort((a, b) => b.score - a.score); // Sort by score descending
   
   const message = {
     type: 'scores',
-    scores: scores.sort((a, b) => b.score - a.score) // Sort by score descending
+    scores: scores
   };
   
   broadcastMessage(message);

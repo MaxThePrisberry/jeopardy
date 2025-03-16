@@ -30,8 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let playerName = '';
     let currentQuestion = null;
     let score = 0;
-    let hasAnsweredCurrentQuestion = false;
-    let lastAnsweredQuestionId = null;
+    let answeredQuestions = new Set(); // Track questions this player has already answered
     
     // WebSocket connection
     let socket;
@@ -60,6 +59,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'gameState':
                     playerId = message.id;
                     updateScore(message.score);
+                    
+                    // Track questions player has already answered
+                    if (message.answeredQuestions && Array.isArray(message.answeredQuestions)) {
+                        answeredQuestions = new Set(message.answeredQuestions);
+                    }
                     
                     // If the player already has a name, update UI accordingly
                     if (message.name && message.name.indexOf('Player-') !== 0) {
@@ -140,17 +144,23 @@ document.addEventListener('DOMContentLoaded', () => {
         currentQuestionEl.textContent = question.questionText;
         questionPointsEl.textContent = `${question.points} points`;
         
-        // Always reset answer state for new questions
+        // Check if player has already answered this question
+        const hasAnswered = answeredQuestions.has(question.questionId);
+        
+        // Always reset answer input for new questions
         if (isNewQuestion) {
-            hasAnsweredCurrentQuestion = false;
-            lastAnsweredQuestionId = null;
             answerInput.value = '';
             
-            // Show answer form if player is registered
+            // Show answer form if player is registered and hasn't answered this question yet
             if (playerName && playerName !== '' && playerName.indexOf('Player-') !== 0) {
-                answerFormEl.classList.remove('hidden');
-                answerInput.focus();
-                statusMessageEl.textContent = `New question available!`;
+                if (!hasAnswered) {
+                    answerFormEl.classList.remove('hidden');
+                    answerInput.focus();
+                    statusMessageEl.textContent = `New question available!`;
+                } else {
+                    answerFormEl.classList.add('hidden');
+                    statusMessageEl.textContent = 'You have already answered this question. Waiting for verification...';
+                }
             } else {
                 answerFormEl.classList.add('hidden');
                 statusMessageEl.textContent = 'Please enter your name and join the game to answer questions.';
@@ -159,13 +169,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function submitAnswer() {
-        // Check if there's an active question and we haven't answered it yet
+        // Check if there's an active question
         if (!currentQuestion) {
             return;
         }
         
-        // Prevent submitting the same answer to the same question multiple times
-        if (hasAnsweredCurrentQuestion && lastAnsweredQuestionId === currentQuestion.questionId) {
+        // Check if player has already answered this question
+        if (answeredQuestions.has(currentQuestion.questionId)) {
+            statusMessageEl.textContent = 'You have already answered this question.';
             return;
         }
         
@@ -189,9 +200,10 @@ document.addEventListener('DOMContentLoaded', () => {
             answer: answer
         }));
         
-        // Update UI for this specific question
-        hasAnsweredCurrentQuestion = true;
-        lastAnsweredQuestionId = currentQuestion.questionId;
+        // Mark this question as answered
+        answeredQuestions.add(currentQuestion.questionId);
+        
+        // Update UI
         answerFormEl.classList.add('hidden');
         statusMessageEl.textContent = 'Answer submitted. Waiting for verification...';
     }
@@ -250,9 +262,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetPlayer() {
         // Reset game state
         currentQuestion = null;
-        lastAnsweredQuestionId = null;
         score = 0;
-        hasAnsweredCurrentQuestion = false;
+        answeredQuestions.clear();
         
         // Update UI
         updateScore(0);

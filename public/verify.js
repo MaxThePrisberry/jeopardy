@@ -187,15 +187,33 @@ document.addEventListener('DOMContentLoaded', () => {
                         const playerData = answers[playerId];
                         
                         if (playerData.verified) {
-                            // For verified answers, just show a simple status
+                            // For verified answers, show a simple status with buttons to change verification
                             const verifiedEl = document.createElement('div');
                             verifiedEl.className = 'verified-answer';
-                            verifiedEl.innerHTML = `
-                                <strong>${playerData.name}</strong>: ${playerData.answer}
-                                <span class="status ${playerData.correct ? 'correct' : 'incorrect'}">
-                                    ${playerData.correct ? 'Correct' : 'Incorrect'}
-                                </span>
-                            `;
+                            
+                            const infoEl = document.createElement('div');
+                            infoEl.innerHTML = `<strong>${playerData.name}</strong>: ${playerData.answer}`;
+                            
+                            const statusEl = document.createElement('div');
+                            statusEl.className = `status ${playerData.correct ? 'correct' : 'incorrect'}`;
+                            statusEl.textContent = playerData.correct ? 'Correct' : 'Incorrect';
+                            
+                            const buttonsEl = document.createElement('div');
+                            buttonsEl.className = 'verification-buttons';
+                            
+                            // Add button to change verification
+                            const changeBtn = document.createElement('button');
+                            changeBtn.className = 'verify-button';
+                            changeBtn.textContent = playerData.correct ? 'Mark Incorrect' : 'Mark Correct';
+                            changeBtn.addEventListener('click', () => {
+                                verifyAnswer(questionId, playerId, !playerData.correct);
+                            });
+                            
+                            buttonsEl.appendChild(changeBtn);
+                            verifiedEl.appendChild(infoEl);
+                            verifiedEl.appendChild(statusEl);
+                            verifiedEl.appendChild(buttonsEl);
+                            
                             answersList.appendChild(verifiedEl);
                         } else {
                             // For unverified answers, show verification buttons

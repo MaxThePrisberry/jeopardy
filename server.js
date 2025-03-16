@@ -68,6 +68,18 @@ if (httpsServer) {
   });
 }
 
+// Game state
+const gameState = {
+  currentQuestion: null,
+  playerAnswers: {},  // Maps questionId -> { points, answers: { playerId: { answer, verified, correct } } }
+  players: {},        // Maps playerId -> { connection, score, name, answers }
+  hostConnection: null,
+  verifierConnection: null
+};
+
+// Score update interval
+let scoreUpdateInterval = null;
+
 // WebSocket setup for HTTP
 const wssHttp = new WebSocketServer({ server: httpServer });
 setupWebSocketServer(wssHttp);
@@ -79,14 +91,20 @@ if (httpsServer) {
   setupWebSocketServer(wssHttps);
 }
 
-// Game state
-const gameState = {
-  currentQuestion: null,
-  playerAnswers: {},  // Maps questionId -> { playerId: answer }
-  players: {},        // Maps playerId -> { connection, score, name }
-  hostConnection: null,
-  verifierConnection: null
-};
+// Helper function to parse cookies
+function parseCookies(cookieHeader) {
+  const cookies = {};
+  if (!cookieHeader) return cookies;
+  
+  cookieHeader.split(';').forEach(cookie => {
+    const parts = cookie.split('=');
+    const name = parts[0].trim();
+    const value = parts[1] ? parts[1].trim() : '';
+    cookies[name] = value;
+  });
+  
+  return cookies;
+}
 
 // Set up WebSocket server with connection handlers
 function setupWebSocketServer(wss) {
@@ -105,7 +123,7 @@ function setupWebSocketServer(wss) {
     } else if (pathname === '/ws/verify') {
       handleVerifierConnection(ws, connectionId);
     } else if (pathname === '/ws/player') {
-      handlePlayerConnection(ws, connectionId);
+      handlePlayerConnection(ws, connectionId, req);
     } else {
       console.log(`Unknown WebSocket endpoint: ${pathname}`);
       ws.close();
@@ -184,6 +202,9 @@ function handleHostConnection(ws, connectionId) {
     type: 'connected',
     role: 'host'
   }));
+
+  // Send current player list
+  broadcastPlayerList();
 }
 
 // Verifier connection handler
@@ -224,17 +245,40 @@ function handleVerifierConnection(ws, connectionId) {
     type: 'connected',
     role: 'verifier'
   }));
+
+  // Also send current scores
+  broadcastScores();
 }
 
 // Player connection handler
-function handlePlayerConnection(ws, connectionId) {
-  // Add player to game state
-  gameState.players[connectionId] = {
-    connection: ws,
-    score: 0,
-    name: `Player-${Object.keys(gameState.players).length + 1}`,
-    answers: {}
-  };
+function handlePlayerConnection(ws, connectionId, req) {
+  // Check for existing player cookie
+  const cookies = parseCookies(req.headers.cookie);
+  const existingPlayerId = cookies.playerId;
+  
+  // If we have a player ID cookie and the player exists in our game state
+  if (existingPlayerId && gameState.players[existingPlayerId]) {
+    // Update the connection and use existing player data
+    gameState.players[existingPlayerId].connection = ws;
+    connectionId = existingPlayerId;
+    console.log(`Player reconnected with ID: ${connectionId}`);
+  } else {
+    // New player - create new entry
+    gameState.players[connectionId] = {
+      connection: ws,
+      score: 0,
+      name: `Player-${Object.keys(gameState.players).length + 1}`,
+      answers: {}
+    };
+    
+    // Set a cookie so the player can be identified on reconnection
+    ws.send(JSON.stringify({
+      type: 'setCookie',
+      name: 'playerId',
+      value: connectionId,
+      maxAge: 86400 // 24 hours
+    }));
+  }
   
   // Process messages from the player
   ws.on('message', (data) => {
@@ -263,18 +307,22 @@ function handlePlayerConnection(ws, connectionId) {
     }
   });
   
-  // Send current game state to new player
+  // Send current game state to player
   const initialState = {
     type: 'gameState',
     question: gameState.currentQuestion,
-    score: 0,
-    id: connectionId
+    score: gameState.players[connectionId].score,
+    id: connectionId,
+    name: gameState.players[connectionId].name
   };
   
   ws.send(JSON.stringify(initialState));
   
   // Broadcast updated player list to all
   broadcastPlayerList();
+  
+  // Also send current scores to ensure everyone is in sync
+  broadcastScores();
 }
 
 // Handle connection closures
@@ -317,11 +365,14 @@ function handleQuestionSelected(message) {
   gameState.currentQuestion = {
     id: message.questionId,
     text: message.questionText,
-    points: message.points
+    points: parseInt(message.points)
   };
   
   // Reset answers for this question
-  gameState.playerAnswers[message.questionId] = {};
+  gameState.playerAnswers[message.questionId] = {
+    points: parseInt(message.points),
+    answers: {}
+  };
   
   // Broadcast question to all players
   Object.values(gameState.players).forEach(player => {
@@ -350,14 +401,32 @@ function handlePlayerAnswer(playerId, message) {
     return;
   }
   
+  // Ensure player is properly registered
+  if (!gameState.players[playerId] || 
+      !gameState.players[playerId].name || 
+      gameState.players[playerId].name.indexOf('Player-') === 0) {
+    
+    // Send error message to player
+    if (gameState.players[playerId] && gameState.players[playerId].connection) {
+      gameState.players[playerId].connection.send(JSON.stringify({
+        type: 'error',
+        message: 'You must enter your name before answering questions'
+      }));
+    }
+    return;
+  }
+  
   const questionId = gameState.currentQuestion.id;
   
   // Store the player's answer
   if (!gameState.playerAnswers[questionId]) {
-    gameState.playerAnswers[questionId] = {};
+    gameState.playerAnswers[questionId] = {
+      points: gameState.currentQuestion.points,
+      answers: {}
+    };
   }
   
-  gameState.playerAnswers[questionId][playerId] = {
+  gameState.playerAnswers[questionId].answers[playerId] = {
     answer: message.answer,
     verified: false
   };
@@ -399,33 +468,48 @@ function handleAnswerVerification(message) {
     return;
   }
   
-  // Mark the answer as verified
-  if (gameState.playerAnswers[questionId][playerId]) {
-    gameState.playerAnswers[questionId][playerId].verified = true;
-    gameState.playerAnswers[questionId][playerId].correct = correct;
-    
-    // Update player score if correct
-    if (correct && gameState.currentQuestion && gameState.currentQuestion.id === questionId) {
-      gameState.players[playerId].score += gameState.currentQuestion.points;
-      
-      // Notify player their answer was correct
-      gameState.players[playerId].connection.send(JSON.stringify({
-        type: 'verification',
-        correct: true,
-        newScore: gameState.players[playerId].score
-      }));
-    } else {
-      // Notify player their answer was incorrect
-      gameState.players[playerId].connection.send(JSON.stringify({
-        type: 'verification',
-        correct: false,
-        newScore: gameState.players[playerId].score
-      }));
-    }
-    
-    // Broadcast updated scores
-    broadcastScores();
+  // Check if this is a re-verification (answer was already verified)
+  const playerAnswer = gameState.playerAnswers[questionId].answers[playerId];
+  if (!playerAnswer) {
+    return;
   }
+  
+  const isReVerification = playerAnswer.verified;
+  const previousCorrect = isReVerification ? playerAnswer.correct : false;
+  
+  // Mark the answer as verified
+  playerAnswer.verified = true;
+  playerAnswer.correct = correct;
+  
+  // Get the points for this question
+  const questionPoints = gameState.playerAnswers[questionId].points;
+  
+  // If re-verification, we need to adjust the score
+  if (isReVerification) {
+    // If was correct and now incorrect, subtract points
+    if (previousCorrect && !correct) {
+      gameState.players[playerId].score -= questionPoints;
+    }
+    // If was incorrect and now correct, add points
+    else if (!previousCorrect && correct) {
+      gameState.players[playerId].score += questionPoints;
+    }
+    // If no change in correctness, do nothing
+  } else {
+    // First-time verification, add points if correct
+    if (correct) {
+      gameState.players[playerId].score += questionPoints;
+    }
+  }
+  
+  // Notify player of verification result
+  gameState.players[playerId].connection.send(JSON.stringify({
+    type: 'verification',
+    correct: correct,
+    newScore: gameState.players[playerId].score
+  }));
+  
+  // Score updates are now handled by the interval, not here
 }
 
 function resetGame() {
@@ -444,6 +528,7 @@ function resetGame() {
     type: 'gameReset'
   });
   
+  // Explicitly broadcast updated scores to ensure everyone gets the reset
   broadcastScores();
 }
 
@@ -496,3 +581,28 @@ function broadcastScores() {
   
   broadcastMessage(message);
 }
+
+// Start the score update interval
+function startScoreUpdateInterval() {
+  // Clear any existing interval
+  if (scoreUpdateInterval) {
+    clearInterval(scoreUpdateInterval);
+  }
+  
+  // Set new interval to update scores every 5 seconds
+  scoreUpdateInterval = setInterval(() => {
+    broadcastScores();
+  }, 5000);
+}
+
+// Start the score update interval when server starts
+startScoreUpdateInterval();
+
+// Ensure the interval gets cleared if the server shuts down
+process.on('SIGINT', () => {
+  console.log('Shutting down Jeopardy Game Server...');
+  if (scoreUpdateInterval) {
+    clearInterval(scoreUpdateInterval);
+  }
+  process.exit(0);
+});

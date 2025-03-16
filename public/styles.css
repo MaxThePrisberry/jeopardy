@@ -94,6 +94,11 @@ h2 {
 
 .question-cell.selected {
     background-color: #808080;
+    cursor: not-allowed;
+}
+
+.question-cell.selected:hover {
+    background-color: #808080;
 }
 
 .current-question-display {
@@ -235,14 +240,48 @@ h2 {
 }
 
 .player-status {
-    background-color: #e6f2ff;
-    padding: 15px;
     border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    background-color: #fff;
 }
 
-#status-message {
-    margin-top: 10px;
+.player-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #003366;
+    color: white;
+    padding: 15px;
+    border-radius: 5px 5px 0 0;
+    margin-bottom: 0;
+}
+
+.player-header h2 {
+    margin: 0;
+    padding: 0;
+    border: none;
+    color: white;
+    font-size: 1.3em;
+}
+
+.status-message {
+    padding: 15px;
     font-weight: bold;
+    min-height: 20px;
+}
+
+#player-score {
+    color: #ffcc00;
+    font-weight: bold;
+}
+
+.player-name-display {
+    font-size: 1.2em;
+}
+
+.player-score-display {
+    font-size: 1.2em;
 }
 
 .answer-form {
@@ -472,12 +511,13 @@ h2 {
     border: 1px solid #f5c6cb;
 }
 
-/* Disabled question cell */
-.question-cell.selected {
-    background-color: #808080;
-    cursor: not-allowed;
+/* Animation for score updates */
+@keyframes scoreUpdate {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); color: #ffcc00; }
+    100% { transform: scale(1); }
 }
 
-.question-cell.selected:hover {
-    background-color: #808080;
+.score-updated {
+    animation: scoreUpdate 1s ease-in-out;
 }

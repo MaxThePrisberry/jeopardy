@@ -1,3 +1,14 @@
+// Helper function to set cookies
+function setCookie(name, value, days) {
+  let expires = "";
+  if (days) {
+    const date = new Date();
+    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+    expires = "; expires=" + date.toUTCString();
+  }
+  document.cookie = name + "=" + (value || "") + expires + "; path=/";
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Elements
     const registrationEl = document.getElementById('registration');
@@ -5,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const playerNameInput = document.getElementById('player-name');
     const registerButton = document.getElementById('register-button');
     const playerScoreEl = document.getElementById('player-score');
+    const playerNameDisplayEl = document.getElementById('player-name-display');
     const statusMessageEl = document.getElementById('status-message');
     const currentQuestionEl = document.getElementById('current-question');
     const questionPointsEl = document.getElementById('question-points');
@@ -39,10 +51,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'connected':
                     console.log(`Connected as ${message.role}`);
                     break;
+                
+                case 'setCookie':
+                    setCookie(message.name, message.value, message.maxAge / 86400);
+                    break;
                     
                 case 'gameState':
                     playerId = message.id;
                     updateScore(message.score);
+                    
+                    // If the player already has a name, update UI accordingly
+                    if (message.name && message.name.indexOf('Player-') !== 0) {
+                        playerName = message.name;
+                        playerNameDisplayEl.textContent = playerName;
+                        // Hide registration and show player status
+                        registrationEl.classList.add('hidden');
+                        playerStatusEl.classList.remove('hidden');
+                        statusMessageEl.textContent = `Welcome back, ${playerName}!`;
+                        
+                        // Update player name input just in case
+                        playerNameInput.value = playerName;
+                    }
                     
                     if (message.question) {
                         setCurrentQuestion(message.question);
@@ -99,6 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
         registrationEl.classList.add('hidden');
         playerStatusEl.classList.remove('hidden');
         statusMessageEl.textContent = `Welcome, ${playerName}!`;
+        playerNameDisplayEl.textContent = playerName; // Update the displayed name
     }
     
     function setCurrentQuestion(question) {
@@ -109,14 +139,27 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset answer state
         hasAnsweredCurrentQuestion = false;
         answerInput.value = '';
-        answerFormEl.classList.remove('hidden');
         
-        // Focus the answer input
-        answerInput.focus();
+        // Only show answer form if player is registered
+        if (playerName && playerName !== '' && playerName.indexOf('Player-') !== 0) {
+            answerFormEl.classList.remove('hidden');
+            // Focus the answer input
+            answerInput.focus();
+        } else {
+            // Show message to register first
+            answerFormEl.classList.add('hidden');
+            statusMessageEl.textContent = 'Please enter your name and join the game to answer questions.';
+        }
     }
     
     function submitAnswer() {
         if (!currentQuestion || hasAnsweredCurrentQuestion) {
+            return;
+        }
+        
+        // Check if player is registered with a name
+        if (!playerName || playerName === '' || playerName.indexOf('Player-') === 0) {
+            alert('Please enter your name and join the game before answering.');
             return;
         }
         
@@ -159,6 +202,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateScore(newScore) {
         score = newScore;
         playerScoreEl.textContent = score;
+        
+        // Animate the score change to draw attention
+        playerScoreEl.classList.add('score-updated');
+        setTimeout(() => {
+            playerScoreEl.classList.remove('score-updated');
+        }, 1000);
     }
     
     function updateLeaderboard(scores) {

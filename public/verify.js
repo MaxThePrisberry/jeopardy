@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                             // Add button to change verification
                             const changeBtn = document.createElement('button');
-                            changeBtn.className = 'verify-button';
+                            changeBtn.className = `verify-button ${playerData.correct ? 'incorrect-button' : 'correct-button'}`;
                             changeBtn.textContent = playerData.correct ? 'Mark Incorrect' : 'Mark Correct';
                             changeBtn.addEventListener('click', () => {
                                 verifyAnswer(questionId, playerId, !playerData.correct);
@@ -281,7 +281,15 @@ document.addEventListener('DOMContentLoaded', () => {
         scores.forEach(player => {
             const scoreEl = document.createElement('div');
             scoreEl.className = 'score-item';
-            scoreEl.textContent = `${player.name}: ${player.score} points`;
+            
+            // Show connection status
+            let statusText = "";
+            if (player.connected === false) {
+                statusText = " (disconnected)";
+                scoreEl.style.opacity = "0.7";
+            }
+            
+            scoreEl.textContent = `${player.name}${statusText}: ${player.score} points`;
             scoresListEl.appendChild(scoreEl);
         });
     }

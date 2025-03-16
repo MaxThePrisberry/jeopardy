@@ -5,6 +5,7 @@ const express = require('express');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
+const path = require('path');
 const { WebSocketServer } = require('ws');
 const cookieParser = require('cookie-parser');
 const { v4: uuidv4 } = require('uuid');
@@ -12,6 +13,13 @@ const { v4: uuidv4 } = require('uuid');
 // Express app setup
 const app = express();
 const port = process.env.PORT || 4000;
+
+// Create results directory if it doesn't exist
+const resultsDir = path.join(__dirname, 'game_results');
+if (!fs.existsSync(resultsDir)) {
+  fs.mkdirSync(resultsDir, { recursive: true });
+  console.log(`Created directory: ${resultsDir}`);
+}
 
 // Create HTTP server
 const httpServer = http.createServer(app);
@@ -72,7 +80,7 @@ if (httpsServer) {
 const gameState = {
   currentQuestion: null,
   playerAnswers: {},  // Maps questionId -> { points, answers: { playerId: { answer, verified, correct } } }
-  players: {},        // Maps playerId -> { connection, score, name, answers }
+  players: {},        // Maps playerId -> { connection, connected, score, name, answers }
   hostConnection: null,
   verifierConnection: null
 };
@@ -260,12 +268,14 @@ function handlePlayerConnection(ws, connectionId, req) {
   if (existingPlayerId && gameState.players[existingPlayerId]) {
     // Update the connection and use existing player data
     gameState.players[existingPlayerId].connection = ws;
+    gameState.players[existingPlayerId].connected = true;
     connectionId = existingPlayerId;
     console.log(`Player reconnected with ID: ${connectionId}`);
   } else {
     // New player - create new entry
     gameState.players[connectionId] = {
       connection: ws,
+      connected: true,
       score: 0,
       name: `Player-${Object.keys(gameState.players).length + 1}`,
       answers: {}
@@ -346,9 +356,11 @@ function handleConnectionClose(pathname, connectionId) {
       
     case '/ws/player':
       if (gameState.players[connectionId]) {
-        delete gameState.players[connectionId];
-        console.log('Player disconnected');
-        broadcastPlayerList();
+        // Mark the player as disconnected but keep their data
+        gameState.players[connectionId].connected = false;
+        gameState.players[connectionId].connection = null;
+        console.log('Player disconnected but data retained');
+        broadcastPlayerList(); // Update the player list to show disconnection
       }
       break;
   }
@@ -376,12 +388,14 @@ function handleQuestionSelected(message) {
   
   // Broadcast question to all players
   Object.values(gameState.players).forEach(player => {
-    player.connection.send(JSON.stringify({
-      type: 'question',
-      questionId: message.questionId,
-      questionText: message.questionText,
-      points: message.points
-    }));
+    if (player.connected && player.connection) {
+      player.connection.send(JSON.stringify({
+        type: 'question',
+        questionId: message.questionId,
+        questionText: message.questionText,
+        points: message.points
+      }));
+    }
   });
   
   // Inform verifier that a new question is active
@@ -502,25 +516,73 @@ function handleAnswerVerification(message) {
     }
   }
   
-  // Notify player of verification result
-  gameState.players[playerId].connection.send(JSON.stringify({
-    type: 'verification',
-    correct: correct,
-    newScore: gameState.players[playerId].score
-  }));
+  // Notify player of verification result if they're connected
+  if (gameState.players[playerId].connected && gameState.players[playerId].connection) {
+    gameState.players[playerId].connection.send(JSON.stringify({
+      type: 'verification',
+      correct: correct,
+      newScore: gameState.players[playerId].score
+    }));
+  }
   
   // Score updates are now handled by the interval, not here
 }
 
+function saveGameResults() {
+  // Create a timestamp for the filename
+  const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\./g, '-');
+  const filename = path.join(resultsDir, `game_results_${timestamp}.json`);
+  
+  // Prepare the game data to save
+  const gameResults = {
+    timestamp: new Date().toISOString(),
+    scores: Object.entries(gameState.players).map(([id, player]) => ({
+      id,
+      name: player.name,
+      score: player.score,
+      connected: player.connected || false
+    })).sort((a, b) => b.score - a.score), // Sort by score descending
+    questions: Object.entries(gameState.playerAnswers).map(([questionId, questionData]) => ({
+      questionId,
+      points: questionData.points,
+      answers: Object.entries(questionData.answers || {}).map(([playerId, answerData]) => ({
+        playerId,
+        playerName: gameState.players[playerId] ? gameState.players[playerId].name : 'Unknown Player',
+        answer: answerData.answer,
+        correct: answerData.correct || false,
+        verified: answerData.verified || false
+      }))
+    }))
+  };
+  
+  // Write the file
+  fs.writeFile(filename, JSON.stringify(gameResults, null, 2), (err) => {
+    if (err) {
+      console.error('Error saving game results:', err);
+    } else {
+      console.log(`Game results saved to ${filename}`);
+    }
+  });
+}
+
 function resetGame() {
+  // Save the game results before resetting
+  saveGameResults();
+  
   // Reset game state
   gameState.currentQuestion = null;
   gameState.playerAnswers = {};
   
-  // Reset player scores
+  // Reset player scores and remove disconnected players
   Object.keys(gameState.players).forEach(playerId => {
-    gameState.players[playerId].score = 0;
-    gameState.players[playerId].answers = {};
+    if (gameState.players[playerId].connected) {
+      // Connected player - just reset score
+      gameState.players[playerId].score = 0;
+      gameState.players[playerId].answers = {};
+    } else {
+      // Disconnected player - remove them
+      delete gameState.players[playerId];
+    }
   });
   
   // Notify all connections
@@ -546,9 +608,11 @@ function broadcastMessage(message) {
     gameState.verifierConnection.ws.send(messageString);
   }
   
-  // Send to all players
+  // Send to all connected players
   Object.values(gameState.players).forEach(player => {
-    player.connection.send(messageString);
+    if (player.connected && player.connection) {
+      player.connection.send(messageString);
+    }
   });
 }
 
@@ -556,7 +620,8 @@ function broadcastPlayerList() {
   const playerList = Object.entries(gameState.players).map(([id, player]) => ({
     id,
     name: player.name,
-    score: player.score
+    score: player.score,
+    connected: player.connected || false
   }));
   
   const message = {
@@ -571,7 +636,8 @@ function broadcastScores() {
   const scores = Object.entries(gameState.players).map(([id, player]) => ({
     id,
     name: player.name,
-    score: player.score
+    score: player.score,
+    connected: player.connected || false
   }));
   
   const message = {

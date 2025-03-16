@@ -266,9 +266,20 @@ h2 {
 }
 
 .status-message {
-    padding: 15px;
+    padding: 15px 20px;
     font-weight: bold;
     min-height: 20px;
+    line-height: 1.5;
+}
+
+.status-message.correct {
+    background-color: #d9f2d9;
+    border-left: 5px solid #009900;
+}
+
+.status-message.incorrect {
+    background-color: #ffe6e6;
+    border-left: 5px solid #cc0000;
 }
 
 #player-score {
@@ -290,14 +301,17 @@ h2 {
 }
 
 .answer-form input {
-    padding: 10px;
+    padding: 12px;
     font-size: 16px;
-    width: 300px;
+    width: 70%;
+    max-width: 400px;
     margin-right: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
 }
 
 .answer-form button {
-    padding: 10px 20px;
+    padding: 12px 20px;
     background-color: #0066cc;
     color: white;
     border: none;
@@ -316,7 +330,7 @@ h2 {
 
 .leaderboard-item {
     background-color: #e6f2ff;
-    padding: 10px;
+    padding: 12px 15px;
     margin-bottom: 10px;
     border-radius: 5px;
     display: flex;
@@ -327,17 +341,26 @@ h2 {
     display: none;
 }
 
-.correct {
-    background-color: #d9f2d9;
-    border-left: 5px solid #009900;
+/* Notification styling */
+.notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 15px 20px;
+    background-color: #004c99;
+    color: white;
+    border-radius: 5px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    z-index: 100;
+    animation: fadeInOut 3s ease-in-out;
 }
 
-.incorrect {
-    background-color: #ffe6e6;
-    border-left: 5px solid #cc0000;
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translateY(20px); }
+    10% { opacity: 1; transform: translateY(0); }
+    90% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-20px); }
 }
-
-/* Additional CSS for the enhanced verifier view - add this to styles.css */
 
 /* Question Sections */
 .question-section {
@@ -404,7 +427,7 @@ h2 {
 
 .verified-answer {
     background-color: #f9f9f9;
-    padding: 12px;
+    padding: 15px;
     margin-bottom: 10px;
     border-radius: 4px;
     display: flex;
@@ -414,9 +437,10 @@ h2 {
 
 .verified-answer .status {
     font-size: 12px;
-    padding: 3px 8px;
+    padding: 4px 10px;
     border-radius: 12px;
     font-weight: bold;
+    margin: 0 10px;
 }
 
 .verified-answer .status.correct {
@@ -449,8 +473,7 @@ h2 {
     border-left: 3px solid #0066cc;
 }
 
-/* Additional CSS for the host import feature - add this to styles.css */
-
+/* Additional CSS for the host import feature */
 .import-container {
     background-color: #f9f9f9;
     padding: 20px;

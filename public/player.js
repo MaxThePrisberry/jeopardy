@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentQuestion = null;
     let score = 0;
     let hasAnsweredCurrentQuestion = false;
+    let lastAnsweredQuestionId = null;
     
     // WebSocket connection
     let socket;
@@ -132,28 +133,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function setCurrentQuestion(question) {
+        // Check if this is a new question
+        const isNewQuestion = !currentQuestion || question.questionId !== currentQuestion.questionId;
+        
         currentQuestion = question;
         currentQuestionEl.textContent = question.questionText;
         questionPointsEl.textContent = `${question.points} points`;
         
-        // Reset answer state
-        hasAnsweredCurrentQuestion = false;
-        answerInput.value = '';
-        
-        // Only show answer form if player is registered
-        if (playerName && playerName !== '' && playerName.indexOf('Player-') !== 0) {
-            answerFormEl.classList.remove('hidden');
-            // Focus the answer input
-            answerInput.focus();
-        } else {
-            // Show message to register first
-            answerFormEl.classList.add('hidden');
-            statusMessageEl.textContent = 'Please enter your name and join the game to answer questions.';
+        // Always reset answer state for new questions
+        if (isNewQuestion) {
+            hasAnsweredCurrentQuestion = false;
+            lastAnsweredQuestionId = null;
+            answerInput.value = '';
+            
+            // Show answer form if player is registered
+            if (playerName && playerName !== '' && playerName.indexOf('Player-') !== 0) {
+                answerFormEl.classList.remove('hidden');
+                answerInput.focus();
+                statusMessageEl.textContent = `New question available!`;
+            } else {
+                answerFormEl.classList.add('hidden');
+                statusMessageEl.textContent = 'Please enter your name and join the game to answer questions.';
+            }
         }
     }
     
     function submitAnswer() {
-        if (!currentQuestion || hasAnsweredCurrentQuestion) {
+        // Check if there's an active question and we haven't answered it yet
+        if (!currentQuestion) {
+            return;
+        }
+        
+        // Prevent submitting the same answer to the same question multiple times
+        if (hasAnsweredCurrentQuestion && lastAnsweredQuestionId === currentQuestion.questionId) {
             return;
         }
         
@@ -177,8 +189,9 @@ document.addEventListener('DOMContentLoaded', () => {
             answer: answer
         }));
         
-        // Update UI
+        // Update UI for this specific question
         hasAnsweredCurrentQuestion = true;
+        lastAnsweredQuestionId = currentQuestion.questionId;
         answerFormEl.classList.add('hidden');
         statusMessageEl.textContent = 'Answer submitted. Waiting for verification...';
     }
@@ -186,16 +199,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleVerification(verification) {
         if (verification.correct) {
             statusMessageEl.textContent = 'Your answer was correct!';
-            statusMessageEl.className = 'correct';
+            statusMessageEl.className = 'status-message correct';
             updateScore(verification.newScore);
         } else {
             statusMessageEl.textContent = 'Your answer was incorrect.';
-            statusMessageEl.className = 'incorrect';
+            statusMessageEl.className = 'status-message incorrect';
         }
         
         // Reset after 3 seconds
         setTimeout(() => {
-            statusMessageEl.className = '';
+            statusMessageEl.className = 'status-message';
         }, 3000);
     }
     
@@ -222,7 +235,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 playerEl.style.fontWeight = 'bold';
             }
             
-            playerEl.textContent = `${index + 1}. ${player.name}: ${player.score} points`;
+            // Show connection status
+            let statusText = "";
+            if (player.connected === false) {
+                statusText = " (disconnected)";
+                playerEl.style.opacity = "0.7";
+            }
+            
+            playerEl.textContent = `${index + 1}. ${player.name}${statusText}: ${player.score} points`;
             leaderboardListEl.appendChild(playerEl);
         });
     }
@@ -230,6 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetPlayer() {
         // Reset game state
         currentQuestion = null;
+        lastAnsweredQuestionId = null;
         score = 0;
         hasAnsweredCurrentQuestion = false;
         
@@ -243,6 +264,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Event listeners
     registerButton.addEventListener('click', registerPlayer);
+    
+    // Add Enter key event for player name input
+    playerNameInput.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            registerPlayer();
+        }
+    });
     
     submitAnswerButton.addEventListener('click', submitAnswer);
     

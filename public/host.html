@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeopardy Host</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container host-container">
+        <h1>Jeopardy Game Host</h1>
+        
+        <div class="game-board">
+            <div class="categories">
+                <!-- Categories will be dynamically added here -->
+            </div>
+            
+            <div class="questions-grid">
+                <!-- Questions will be dynamically added here -->
+            </div>
+        </div>
+        
+        <div class="current-question-display">
+            <h2>Current Question</h2>
+            <div id="current-question">No question selected</div>
+            <div id="question-points"></div>
+        </div>
+        
+        <div class="player-list">
+            <h2>Players</h2>
+            <ul id="players"></ul>
+        </div>
+        
+        <div class="controls">
+            <button id="reset-game">Reset Game</button>
+        </div>
+    </div>
+    
+    <script src="host.js"></script>
+</body>
+</html>
